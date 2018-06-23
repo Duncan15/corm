@@ -1,9 +1,12 @@
 package corm;
 
+import com.mysql.cj.api.mysqla.result.Resultset;
+import util.CopyUtil;
+
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class Csession {
     private Connection conn;
@@ -25,16 +28,19 @@ public class Csession {
     }
     public<T> List<T> find(Class<T> cl){
         ResultSet resultSet=null;
+        Map<String,TreeSet<Integer>> columnInfo=null;
         List<T> ans=new ArrayList<>();
         try{
             resultSet=statement.getResultSet();
+            columnInfo=storeColumnInfo(resultSet);
+            debugResultSetMetaData(resultSet);
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when getting result set",e);
             return ans;
         }
         try{
             while(resultSet.next()){
-                T row=inject(cl,resultSet);
+                T row=inject(cl,resultSet, CopyUtil.copy(columnInfo,300));
                 if(row!=null){
                     ans.add(row);
                 }
@@ -48,21 +54,61 @@ public class Csession {
     }
     public<T> T get(Class<T> cl){
         ResultSet resultSet=null;
+        Map<String,TreeSet<Integer>> columnInfo=null;
         T ans=null;
         try{
             resultSet=statement.getResultSet();
+            columnInfo=storeColumnInfo(resultSet);
+            debugResultSetMetaData(resultSet);
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when getting result set",e);
             return ans;
         }
         try{
-            if(resultSet.first()) ans=inject(cl,resultSet);
+            if(resultSet.first()) ans=inject(cl,resultSet,CopyUtil.copy(columnInfo,300));
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when iterate the result",e);
         }finally {
             closeResultSet(resultSet);
         }
         return ans;
+    }
+    private Map<String,TreeSet<Integer>> storeColumnInfo(ResultSet resultSet){
+        Map<String,TreeSet<Integer>> columnInfo=new HashMap<>();
+        if(resultSet!=null){
+            try{
+                ResultSetMetaData metaData=resultSet.getMetaData();
+                int count=metaData.getColumnCount();
+                for(int i=1;i<=count;i++){
+                    String curLabel=metaData.getColumnLabel(i);
+                    if(columnInfo.containsKey(curLabel)){
+                        columnInfo.get(curLabel).add(i);
+                    }else {
+                        TreeSet<Integer> innerSet=new TreeSet<>();
+                        innerSet.add(i);
+                        columnInfo.put(curLabel,innerSet);
+                    }
+                }
+            }catch (SQLException e){
+                e.printStackTrace();
+            }
+        }
+        return columnInfo;
+    }
+    public String debugResultSetMetaData(ResultSet resultSet){
+        if(resultSet!=null){
+            try{
+                ResultSetMetaData metaData=resultSet.getMetaData();
+                int len=metaData.getColumnCount();
+                for(int i=1;i<=len;i++){
+                    
+                }
+            }catch (SQLException e){
+                e.printStackTrace();
+            }
+
+        }
+        return null;
     }
     /*
     inner method: responsible for inject data into struct
@@ -74,7 +120,7 @@ public class Csession {
 
     if is original field, set it's name the same with the one from the sql result
      */
-    private<T> T inject(Class<T> cl,ResultSet resultSet){
+    private<T> T inject(Class<T> cl,ResultSet resultSet,Map<String ,TreeSet<Integer>> columnInfo){
         T ans=null;
         try{
             ans=cl.newInstance();
@@ -90,18 +136,44 @@ public class Csession {
         for(Field e:fields){
             if(e.getName().endsWith("_ext")){
                 try{
-                    e.set(ans,inject(e.getType(),resultSet));
+                    e.set(ans,inject(e.getType(),resultSet,columnInfo));
                 }catch (IllegalAccessException err){
                     Corm.cormLogger.error("error happen when access the field"+e.getName(),err);
                 }
             }else {
                 try{
-                    Object value=resultSet.getObject(e.getName());
-                    e.set(ans,value);
+                    TreeSet<Integer> innerSet=columnInfo.get(e.getName());
+                    if(innerSet==null||innerSet.first()==null){
+                        if(e.getType().isPrimitive()){
+                            e.set(ans,0);
+                        }else {
+                            e.set(ans,null);
+                        }
+                    }else {
+                        int index= innerSet.pollFirst();
+                        Object value=resultSet.getObject(index);
+                        if(value==null){
+                            if(e.getType().isPrimitive()){
+                                e.set(ans,0);
+                            }else {
+                                e.set(ans,null);
+                            }
+                        }else {
+                            value=e.getType().getConstructor(String.class).newInstance(value.toString());
+                            e.set(ans,value);
+                        }
+
+                    }
                 }catch (SQLException err){
                     Corm.cormLogger.error("error happen when get the field from result set:"+e.getName(),err);
                 }catch (IllegalAccessException err){
                     Corm.cormLogger.error("error happen when access the field"+e.getName(),err);
+                }catch (NoSuchMethodException err){
+                    Corm.cormLogger.error("error happen when get the field constructor"+e.getName(),err);
+                }catch (InstantiationException err){
+                    Corm.cormLogger.error("error happen when init the field"+e.getName(),err);
+                }catch (InvocationTargetException err){
+                    Corm.cormLogger.error("error happen and i don't know why");
                 }
             }
         }

@@ -18,6 +18,8 @@ public class Corm {
             ConnectionPool.connectionString=url;
             ConnectionPool.username=username;
             ConnectionPool.password=password;
+            ConnectionPool.poolMinSize=5;
+            ConnectionPool.poolMaxSize=20;
             pool=ConnectionPool.getInstance();
         }
     }
