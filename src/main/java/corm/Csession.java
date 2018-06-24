@@ -1,6 +1,5 @@
 package corm;
 
-import com.mysql.cj.api.mysqla.result.Resultset;
 import util.CopyUtil;
 
 import java.lang.reflect.Field;
@@ -10,7 +9,10 @@ import java.util.*;
 
 public class Csession {
     private Connection conn;
-    private PreparedStatement statement;
+    private Map<String,Queue<Integer>> columnInfo;
+
+    public PreparedStatement statement;
+    public ResultSet resultSet;
     public Csession(Connection connection){
         this.conn=connection;
     }
@@ -24,23 +26,19 @@ public class Csession {
         statement=conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
         setParam(param);
         statement.execute();
+        resultSet=statement.getResultSet();
+        columnInfo=storeColumnInfoToQueue(resultSet);
         return this;
     }
     public<T> List<T> find(Class<T> cl){
-        ResultSet resultSet=null;
-        Map<String,TreeSet<Integer>> columnInfo=null;
         List<T> ans=new ArrayList<>();
-        try{
-            resultSet=statement.getResultSet();
-            columnInfo=storeColumnInfo(resultSet);
-            debugResultSetMetaData(resultSet);
-        }catch (SQLException e){
-            Corm.cormLogger.error("error happen when getting result set",e);
-            return ans;
-        }
+        debugResultSetMetaData(resultSet);
+
         try{
             while(resultSet.next()){
-                T row=inject(cl,resultSet, CopyUtil.copy(columnInfo,300));
+                //T row=inject(cl,resultSet, CopyUtil.copy(columnInfo,300));
+                //T row=inject(cl,resultSet, copyMap(columnInfo));
+                T row=inject(cl,resultSet,columnInfo);
                 if(row!=null){
                     ans.add(row);
                 }
@@ -48,24 +46,16 @@ public class Csession {
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when iterate the result",e);
         }finally {
-            closeResultSet(resultSet);
+            //closeResultSet(resultSet);
         }
         return ans;
     }
     public<T> T get(Class<T> cl){
-        ResultSet resultSet=null;
-        Map<String,TreeSet<Integer>> columnInfo=null;
         T ans=null;
+        debugResultSetMetaData(resultSet);
+
         try{
-            resultSet=statement.getResultSet();
-            columnInfo=storeColumnInfo(resultSet);
-            debugResultSetMetaData(resultSet);
-        }catch (SQLException e){
-            Corm.cormLogger.error("error happen when getting result set",e);
-            return ans;
-        }
-        try{
-            if(resultSet.first()) ans=inject(cl,resultSet,CopyUtil.copy(columnInfo,300));
+            if(resultSet.first()) ans=inject(cl,resultSet,columnInfo);
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when iterate the result",e);
         }finally {
@@ -73,6 +63,7 @@ public class Csession {
         }
         return ans;
     }
+
     private Map<String,TreeSet<Integer>> storeColumnInfo(ResultSet resultSet){
         Map<String,TreeSet<Integer>> columnInfo=new HashMap<>();
         if(resultSet!=null){
@@ -95,13 +86,35 @@ public class Csession {
         }
         return columnInfo;
     }
+    private Map<String,Queue<Integer>> storeColumnInfoToQueue(ResultSet resultSet){
+        Map<String,Queue<Integer>> columnInfo=new HashMap<>();
+        if(resultSet!=null){
+            try{
+                ResultSetMetaData metaData=resultSet.getMetaData();
+                int count=metaData.getColumnCount();
+                for(int i=1;i<=count;i++){
+                    String curLabel=metaData.getColumnLabel(i);
+                    if(columnInfo.containsKey(curLabel)){
+                        columnInfo.get(curLabel).add(i);
+                    }else {
+                        Queue<Integer> queue=new ArrayDeque<>();
+                        queue.add(i);
+                        columnInfo.put(curLabel,queue);
+                    }
+                }
+            }catch (SQLException e){
+                e.printStackTrace();
+            }
+        }
+        return columnInfo;
+    }
     public String debugResultSetMetaData(ResultSet resultSet){
         if(resultSet!=null){
             try{
                 ResultSetMetaData metaData=resultSet.getMetaData();
                 int len=metaData.getColumnCount();
                 for(int i=1;i<=len;i++){
-                    
+
                 }
             }catch (SQLException e){
                 e.printStackTrace();
@@ -120,7 +133,7 @@ public class Csession {
 
     if is original field, set it's name the same with the one from the sql result
      */
-    private<T> T inject(Class<T> cl,ResultSet resultSet,Map<String ,TreeSet<Integer>> columnInfo){
+    private<T> T inject(Class<T> cl,ResultSet resultSet,Map<String ,Queue<Integer>> columnInfo){
         T ans=null;
         try{
             ans=cl.newInstance();
@@ -142,15 +155,16 @@ public class Csession {
                 }
             }else {
                 try{
-                    TreeSet<Integer> innerSet=columnInfo.get(e.getName());
-                    if(innerSet==null||innerSet.first()==null){
+                    Queue<Integer> queue=columnInfo.get(e.getName());
+                    if(queue==null||queue.size()==0){
                         if(e.getType().isPrimitive()){
                             e.set(ans,0);
                         }else {
                             e.set(ans,null);
                         }
                     }else {
-                        int index= innerSet.pollFirst();
+                        int index=queue.poll();
+                        queue.add(index);
                         Object value=resultSet.getObject(index);
                         if(value==null){
                             if(e.getType().isPrimitive()){
@@ -216,5 +230,12 @@ public class Csession {
             }
         }
     }
-
+    private HashMap<String,TreeSet<Integer>> copyMap(Map<String,TreeSet<Integer>> source){
+        HashMap<String,TreeSet<Integer>> target=new HashMap<>();
+        for(Map.Entry<String,TreeSet<Integer>> each:source.entrySet()){
+            TreeSet<Integer> innerSet=new TreeSet<>(each.getValue());
+            target.put(each.getKey(),innerSet);
+        }
+        return target;
+    }
 }

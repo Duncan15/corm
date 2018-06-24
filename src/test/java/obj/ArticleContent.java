@@ -1,4 +1,4 @@
-package base.obj;
+package obj;
 
 public class ArticleContent {
     public Long id;

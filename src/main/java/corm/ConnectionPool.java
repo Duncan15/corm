@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 //the attribute in the class with be configed by the listener when context init
-class ConnectionPool{
+public class ConnectionPool{
     private static final String driver="com.mysql.cj.jdbc.Driver";
     //set useSSL=false here can avoid the warning
     public static String connectionString;
