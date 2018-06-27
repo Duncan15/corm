@@ -37,7 +37,6 @@ public class Csession {
         try{
             while(resultSet.next()){
                 //T row=inject(cl,resultSet, CopyUtil.copy(columnInfo,300));
-                //T row=inject(cl,resultSet, copyMap(columnInfo));
                 T row=inject(cl,resultSet,columnInfo);
                 if(row!=null){
                     ans.add(row);
@@ -46,7 +45,7 @@ public class Csession {
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when iterate the result",e);
         }finally {
-            //closeResultSet(resultSet);
+            closeResultSet(resultSet);
         }
         return ans;
     }
@@ -64,28 +63,57 @@ public class Csession {
         return ans;
     }
 
-    private Map<String,TreeSet<Integer>> storeColumnInfo(ResultSet resultSet){
-        Map<String,TreeSet<Integer>> columnInfo=new HashMap<>();
-        if(resultSet!=null){
-            try{
-                ResultSetMetaData metaData=resultSet.getMetaData();
-                int count=metaData.getColumnCount();
-                for(int i=1;i<=count;i++){
-                    String curLabel=metaData.getColumnLabel(i);
-                    if(columnInfo.containsKey(curLabel)){
-                        columnInfo.get(curLabel).add(i);
-                    }else {
-                        TreeSet<Integer> innerSet=new TreeSet<>();
-                        innerSet.add(i);
-                        columnInfo.put(curLabel,innerSet);
-                    }
-                }
-            }catch (SQLException e){
-                e.printStackTrace();
-            }
-        }
-        return columnInfo;
+    public boolean begin(){
+        return setTransaction(Type.CommitType.NO_AUTO_COMMIT);
     }
+    private boolean setTransaction(Type.CommitType type){
+        try{
+            if(type== Type.CommitType.AUTO_COMMIT){
+                this.conn.setAutoCommit(true);
+            }else if (type==Type.CommitType.NO_AUTO_COMMIT){
+                this.conn.setAutoCommit(false);
+            }else {
+                return false;
+            }
+
+        }catch (SQLException e){
+            Corm.cormLogger.error("a database access error occurs" +
+                    " or this method is called on a closed connection",e);
+            return false;
+        }
+        return true;
+    }
+
+    //be called only not in auto-commit mode
+    public boolean commit(){
+        try{
+            this.conn.commit();
+        }catch (SQLException e){
+            Corm.cormLogger.error("a database access error occurs" +
+                    " or this method is called on a closed connection or this connection object is in auto-commit mode",e);
+            return false;
+        }
+        finally {
+            setTransaction(Type.CommitType.AUTO_COMMIT);
+        }
+        return true;
+    }
+
+    //be called only not in auto-commit mode
+    public boolean rollback(){
+        try {
+            this.conn.rollback();
+        }catch (SQLException e){
+            Corm.cormLogger.error("a database access error occurs" +
+                    " or this method is called on a closed connection or this connection object is in auto-commit mode",e);
+            return false;
+        }
+        finally {
+            setTransaction(Type.CommitType.AUTO_COMMIT);
+        }
+        return true;
+    }
+
     private Map<String,Queue<Integer>> storeColumnInfoToQueue(ResultSet resultSet){
         Map<String,Queue<Integer>> columnInfo=new HashMap<>();
         if(resultSet!=null){
@@ -230,12 +258,5 @@ public class Csession {
             }
         }
     }
-    private HashMap<String,TreeSet<Integer>> copyMap(Map<String,TreeSet<Integer>> source){
-        HashMap<String,TreeSet<Integer>> target=new HashMap<>();
-        for(Map.Entry<String,TreeSet<Integer>> each:source.entrySet()){
-            TreeSet<Integer> innerSet=new TreeSet<>(each.getValue());
-            target.put(each.getKey(),innerSet);
-        }
-        return target;
-    }
+
 }
