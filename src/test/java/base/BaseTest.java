@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 public class BaseTest {
@@ -34,6 +35,21 @@ public class BaseTest {
 
         }
         csession.exit();
+    }
+    @Test
+    public void testMap(){
+        Corm orm=new Corm(connectionURL,userName,password);
+        Csession csession=orm.getNewSession();
+        try {
+            Map<String,Object> map=csession.sql("select * from article_info_table as a inner join article_content_table as b using(id)").getMap();
+            for(Map.Entry<String,Object> entry:map.entrySet()){
+                System.out.println(entry.getKey()+"\t"+entry.getValue());
+            }
+        }catch (SQLException e){
+            e.printStackTrace();
+        }
+        csession.exit();
+
     }
     @Test
     public void testReflect(){

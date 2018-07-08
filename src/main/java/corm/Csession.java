@@ -78,6 +78,21 @@ public class Csession {
         }
         return ans;
     }
+    public Map<String,Object> getMap(){
+        Map<String,Object> ans=null;
+        try {
+            resultSet=statement.getResultSet();
+            columnInfo=storeColumnInfoToQueue(resultSet);
+            debugResultSetMetaData(resultSet);
+            if(resultSet.first())ans=map(resultSet,columnInfo);
+        }catch (SQLException e){
+            Corm.cormLogger.error("error happen when iterate the result",e);
+        }finally {
+            closeResultSet(resultSet);
+        }
+        return ans;
+    }
+
     public List<Long> insert(){
         return _update();
     }
@@ -239,6 +254,31 @@ public class Csession {
         }
         return ans;
     }
+    private Map<String,Object> map(ResultSet resultSet,Map<String ,Queue<Integer>> columnInfo){
+        Map<String,Object> ans=new HashMap<>();
+        for(Map.Entry<String,Queue<Integer>> entry:columnInfo.entrySet()){
+            Object value=null;
+            try{
+                Queue<Integer> queue=entry.getValue();
+                if(queue.size()==1){
+                    value=resultSet.getObject(queue.peek());
+                }else {
+                    Queue<Object> q=new ArrayDeque<>();
+                    for(int i=1;i<=queue.size();i++){
+                        int index=queue.poll();
+                        queue.add(index);
+                        q.add(resultSet.getObject(index));
+                    }
+                    value=q;
+                }
+            }catch (SQLException e){
+                //won't happen here
+            }
+            ans.put(entry.getKey(),value);
+        }
+        return ans;
+    }
+
     private void closeResultSet(ResultSet r){
         try{
             if(r!=null){
