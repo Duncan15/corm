@@ -3,7 +3,6 @@ package corm;
 import util.CopyUtil;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.sql.*;
 import java.util.*;
 
@@ -13,10 +12,22 @@ public class Csession {
 
     public PreparedStatement statement;
     public ResultSet resultSet;
+    /*
+    usually this method won't be invoke by user
+     */
     public Csession(Connection connection){
         this.conn=connection;
     }
     public void exit(){
+        closeResultSet(resultSet);
+        try {
+            if(statement!=null){
+                statement.close();
+            }
+        }catch (SQLException e){
+            Corm.cormLogger.error("error happen when close statement",e);
+        }
+
         ConnectionPool.returnConn(conn);
     }
     public Csession sql(String sql,Object... param)throws SQLException{
@@ -26,15 +37,16 @@ public class Csession {
         statement=conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
         setParam(param);
         statement.execute();
-        resultSet=statement.getResultSet();
-        columnInfo=storeColumnInfoToQueue(resultSet);
         return this;
     }
     public<T> List<T> find(Class<T> cl){
         List<T> ans=new ArrayList<>();
-        debugResultSetMetaData(resultSet);
 
         try{
+            resultSet=statement.getResultSet();
+            columnInfo=storeColumnInfoToQueue(resultSet);
+            debugResultSetMetaData(resultSet);
+
             while(resultSet.next()){
                 //T row=inject(cl,resultSet, CopyUtil.copy(columnInfo,300));
                 T row=inject(cl,resultSet,columnInfo);
@@ -50,15 +62,40 @@ public class Csession {
         return ans;
     }
     public<T> T get(Class<T> cl){
+
         T ans=null;
-        debugResultSetMetaData(resultSet);
 
         try{
+            resultSet=statement.getResultSet();
+            columnInfo=storeColumnInfoToQueue(resultSet);
+            debugResultSetMetaData(resultSet);
+
             if(resultSet.first()) ans=inject(cl,resultSet,columnInfo);
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when iterate the result",e);
         }finally {
             closeResultSet(resultSet);
+        }
+        return ans;
+    }
+    public List<Long> insert(){
+        return _update();
+    }
+    public List<Long> update(){
+        return _update();
+    }
+    public List<Long> delete(){
+        return _update();
+    }
+    private List<Long> _update(){
+        List<Long> ans=new ArrayList<>();
+        try{
+            resultSet=statement.getGeneratedKeys();
+            if(resultSet.next()){
+                ans.add(resultSet.getLong(1));
+            }
+        }catch (SQLException e){
+            Corm.cormLogger.error("error happen when get generated keys ",e);
         }
         return ans;
     }
@@ -131,7 +168,7 @@ public class Csession {
                     }
                 }
             }catch (SQLException e){
-                e.printStackTrace();
+                Corm.cormLogger.error("error happen when store column info",e);
             }
         }
         return columnInfo;
@@ -165,10 +202,7 @@ public class Csession {
         T ans=null;
         try{
             ans=cl.newInstance();
-        }catch (InstantiationException e){
-            Corm.cormLogger.error("error happen when create orm object",e);
-            return ans;
-        }catch (IllegalAccessException e){
+        }catch (Exception e){
             Corm.cormLogger.error("error happen when create orm object",e);
             return ans;
         }
@@ -185,37 +219,21 @@ public class Csession {
                 try{
                     Queue<Integer> queue=columnInfo.get(e.getName());
                     if(queue==null||queue.size()==0){
-                        if(e.getType().isPrimitive()){
-                            e.set(ans,0);
-                        }else {
-                            e.set(ans,null);
-                        }
+                        setDefault(e,ans);
                     }else {
                         int index=queue.poll();
                         queue.add(index);
-                        Object value=resultSet.getObject(index);
-                        if(value==null){
-                            if(e.getType().isPrimitive()){
-                                e.set(ans,0);
-                            }else {
-                                e.set(ans,null);
-                            }
+                        Object value=resultSet.getObject(index,e.getType());//the type mapping is absolutely equal to the specification in JDBC and no other localize
+                        if(value==null){//the value will be null if the value in db is null
+                            setDefault(e,ans);
                         }else {
-                            value=e.getType().getConstructor(String.class).newInstance(value.toString());
                             e.set(ans,value);
                         }
-
                     }
                 }catch (SQLException err){
                     Corm.cormLogger.error("error happen when get the field from result set:"+e.getName(),err);
                 }catch (IllegalAccessException err){
                     Corm.cormLogger.error("error happen when access the field"+e.getName(),err);
-                }catch (NoSuchMethodException err){
-                    Corm.cormLogger.error("error happen when get the field constructor"+e.getName(),err);
-                }catch (InstantiationException err){
-                    Corm.cormLogger.error("error happen when init the field"+e.getName(),err);
-                }catch (InvocationTargetException err){
-                    Corm.cormLogger.error("error happen and i don't know why");
                 }
             }
         }
@@ -223,7 +241,9 @@ public class Csession {
     }
     private void closeResultSet(ResultSet r){
         try{
-            r.close();
+            if(r!=null){
+                r.close();
+            }
         }catch (SQLException e){
             Corm.cormLogger.error("error happen when close result set",e);
         }
@@ -257,6 +277,18 @@ public class Csession {
                 statement.setNull(i,Types.INTEGER);
             }
         }
+    }
+    private void setDefault(Field field,Object obj){
+        try {
+            if(field.getType().isPrimitive()){
+                field.set(obj,0);
+            }else {
+                field.set(obj,null);
+            }
+        }catch (IllegalAccessException e){
+            Corm.cormLogger.error("error happen when set default value",e);
+        }
+
     }
 
 }

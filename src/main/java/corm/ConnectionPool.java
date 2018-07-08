@@ -7,7 +7,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
-//the attribute in the class with be configed by the listener when context init
+//the attribute in the class must be configed when first use
 public class ConnectionPool{
     private static final String driver="com.mysql.cj.jdbc.Driver";
     //set useSSL=false here can avoid the warning
@@ -23,12 +23,12 @@ public class ConnectionPool{
             Class.forName(driver);
         } catch (ClassNotFoundException e) {
             // TODO Auto-generated catch block
-            e.printStackTrace();
+            Corm.cormLogger.error("maybe you haven't add the mysql driver in your classpath",e);
         }
     }
     private static ConnectionPool connPool=null;//单例对象
-    private ArrayBlockingQueue<Connection> connArray;//实际连接池
-    private ReentrantLock lock;
+    private ArrayBlockingQueue<Connection> connArray;//实际连接池  //存在于单例对象中
+    private ReentrantLock lock;    //存在于单例对象中
     private ConnectionPool(){
         Corm.cormLogger.info("init ConnectionPool");
         this.count=this.poolMinSize;
@@ -41,6 +41,7 @@ public class ConnectionPool{
                 Connection tmp=DriverManager.getConnection(connectionString, username, password);
                 connArray.put(tmp);
             }catch (Exception e){
+                Corm.cormLogger.error("error happen when init connectionPool",e);
                 i--;
             }
         }
