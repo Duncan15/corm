@@ -1,17 +1,15 @@
 package base;
 
 import obj.Article;
-import corm.Corm;
-import corm.Csession;
+import com.cwc.corm.Corm;
+import com.cwc.corm.Csession;
 import obj.ArticleInfo;
 import org.junit.Test;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 
 public class BaseTest {
     String connectionURL="jdbc:mysql://127.0.0.1:3306/ypzj?useUnicode=true&characterEncoding=utf-8&useSSL=false";

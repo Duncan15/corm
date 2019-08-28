@@ -1,15 +1,13 @@
 package compare;
 
-import corm.ConnectionPool;
-import corm.Corm;
-import corm.Csession;
+import com.cwc.corm.ConnectionPool;
+import com.cwc.corm.Corm;
+import com.cwc.corm.Csession;
 import mapper.ArticleInfoMapper;
 import mapper.RowMapper;
-import obj.Article;
 import obj.ArticleInfo;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;

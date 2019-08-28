@@ -1,7 +1,7 @@
 package compare;
 
 
-import corm.ConnectionPool;
+import com.cwc.corm.ConnectionPool;
 import mapper.RowMapper;
 
 import java.sql.*;
